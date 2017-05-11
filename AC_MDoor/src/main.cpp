@@ -23,6 +23,22 @@ RFID
 #include <SoftwareSerial.h>
 #include <SPI.h>
 #include <MFRC522.h>
+#include <Keypad.h>
+
+const byte ROWS = 4; //four rows
+const byte COLS = 3; //three columns
+char keys[ROWS][COLS] = {
+  {'1','2','3'},
+  {'4','5','6'},
+  {'7','8','9'},
+  {'*','0','#'}
+};
+
+//need to change
+byte rowPins[ROWS] = {5, 4, 3, 2}; //connect to the row pinouts of the keypad
+byte colPins[COLS] = {8, 7, 6}; //connect to the column pinouts of the keypad
+
+Keypad keypad = Keypad( makeKeymap(keys), rowPins, colPins, ROWS, COLS );
 
 #define SS_PIN 10 //SS pin for rfid
 #define RST_PIN 9 //RST pin for rfid (not used)
@@ -33,23 +49,26 @@ RFID
 #define led_green2 5
 #define led_red2 4
 
-void printDec(byte *buffer, byte bufferSize); //declare helper function
-
-SoftwareSerial mySerial(2, 3); // RX, TX
-
+int myTimeout = 50;
 String msg = ""; // read from serial
 String ID = ""; // read ID from RFID
-
-int myTimeout = 50;
+// Init array that will store new NUID
+byte nuidPICC = 0;
+bool flag = false;
+char key;
+char pass[4];
+byte data_count = 0;
 
 MFRC522 rfid(SS_PIN, RST_PIN); // Instance of the class
 
-// Init array that will store new NUID
-byte nuidPICC = 0;
+SoftwareSerial mySerial(2, 3); // RX, TX
+
+void printDec(byte *buffer, byte bufferSize); //declare helper function
+void clearData();
 
 void setup() {
  mySerial.begin(9600);
- Serial.begin(9600);
+ //Serial.begin(9600);
  SPI.begin(); // Init SPI bus
  rfid.PCD_Init(); // Init MFRC522
 
@@ -59,15 +78,31 @@ void setup() {
  pinMode(led_red2,OUTPUT);
  pinMode(buzzer,OUTPUT);
 
- Serial.setTimeout(myTimeout);
+ //Serial.setTimeout(myTimeout);
  mySerial.setTimeout(myTimeout);
 
 }
 
 void loop() {
-
-   if (mySerial.available()) //do only if there is data on mySerial
- {
+  //keypad handler
+  if (flag == true)
+  {
+    key = keypad.getKey();
+    if (key) //make sure a key is actually pressed
+    {
+      pass[data_count] = key; //store char into data array
+      data_count++;
+    }
+    if(data_count == 3)
+    {
+      mySerial.print("D1#"+ID+"#"+pass+"\n");
+      clearData();
+      flag = false;
+    }
+  }
+  //server answer handler
+  if (mySerial.available()) //do only if there is data on mySerial
+  {
    msg = mySerial.readString();
    if (msg == "SD1#yes")
    {
@@ -89,7 +124,6 @@ void loop() {
      digitalWrite(led_red2, LOW);
      nuidPICC = 0;
    }
-
   }
 
  // Look for new cards
@@ -110,24 +144,21 @@ void loop() {
    return;
  }
 
- if (rfid.uid.uidByte[0] != nuidPICC) //||
+//save card ID
+ if (rfid.uid.uidByte[0] != nuidPICC)
    {
      nuidPICC = rfid.uid.uidByte[0];
-
      printDec(rfid.uid.uidByte, rfid.uid.size);
-     mySerial.print("D1#"+ID+"\n");
+     //mySerial.print("D1#"+ID+"#1111"+"\n");
+     flag = true;
+     //Serial.print("D1#"+ID+"#1111"+"\n");
    }
-
-
 
  // Halt PICC
  rfid.PICC_HaltA();
 
  // Stop encryption on PCD
  rfid.PCD_StopCrypto1();
-
-
-
 }
 
 /**
@@ -140,4 +171,13 @@ void printDec(byte *buffer, byte bufferSize)
  {
    ID.concat(String(buffer[i], DEC));
  }
+}
+
+void clearData()
+{
+  while(data_count != 0)
+  {
+    pass[data_count--] = 0;
+  }
+  return;
 }
