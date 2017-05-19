@@ -1,5 +1,6 @@
 /*
 This access system main door with ESP initial test
+Send Card ID via MQTT
 */
 //Annotation from TFT_lib author
 // IMPORTANT: Adafruit_TFTLCD LIBRARY MUST BE SPECIFICALLY
@@ -21,6 +22,10 @@ This access system main door with ESP initial test
 #include <SPI.h>
 #include <MFRC522.h>
 
+#include <ELClient.h>
+#include <ELClientCmd.h>
+#include <ELClientMqtt.h>
+
 #define SS_PIN 10 //SS pin for rfid
 #define RST_PIN A1  //RST pin for rfid (not used)
 
@@ -29,9 +34,12 @@ String utf8rus(String source);
 
 MFRC522 rfid(SS_PIN, RST_PIN); // Instance of the class
 String ID = ""; // read ID from RFID
+//const char * buf;
 // Init array that will store new NUID
 byte nuidPICC = 0;
-
+/*
+TFT Initialize block
+*/
 // The control pins for the LCD can be assigned to any digital or
 // analog pins...but we'll use the analog pins as this allows us to
 // double up the pins with the touch screen (see the TFT paint example).
@@ -74,34 +82,130 @@ Adafruit_TFTLCD tft(LCD_CS, LCD_CD, LCD_WR, LCD_RD, LCD_RESET);
 
 // Init TouchScreen:
 //TouchScreen ts = TouchScreen(XP, YP, XM, YM, SENSIBILITY);
+//End TFT Init
+/*
+esp-link Initialize block
+*/
+// Initialize a connection to esp-link using the normal hardware serial port both for
+// SLIP and for debug messages.
+ELClient esp(&Serial, &Serial);
 
+// Initialize CMD client (for GetTime)
+ELClientCmd cmd(&esp);
 
+// Initialize the MQTT client
+ELClientMqtt mqtt(&esp);
 
+// Callback made from esp-link to notify of wifi status changes
+// Here we just print something out for grins
+void wifiCb(void* response) {
+  ELClientResponse *res = (ELClientResponse*)response;
+  if (res->argc() == 1) {
+    uint8_t status;
+    res->popArg(&status, 1);
+
+    if(status == STATION_GOT_IP) {
+      Serial.println("WIFI CONNECTED");
+    } else {
+      Serial.print("WIFI NOT READY: ");
+      Serial.println(status);
+    }
+  }
+}
+
+bool connected;
+const char* cardID_mqtt = "AS/door1/cardID";
+
+// Callback when MQTT is connected
+void mqttConnected(void* response) {
+  Serial.println("MQTT connected!");
+  mqtt.subscribe(cardID_mqtt);
+  //mqtt.subscribe("/hello/world/#");
+  //mqtt.subscribe("/esp-link/2", 1);
+  //mqtt.publish("/esp-link/0", "test1");
+  connected = true;
+}
+
+// Callback when MQTT is disconnected
+void mqttDisconnected(void* response) {
+  Serial.println("MQTT disconnected");
+  connected = false;
+}
+
+// Callback when an MQTT message arrives for one of our subscriptions
+void mqttData(void* response) {
+  ELClientResponse *res = (ELClientResponse *)response;
+
+  Serial.print("Received: topic=");
+  String topic = res->popString();
+  Serial.println(topic);
+
+  Serial.print("data=");
+  String data = res->popString();
+  Serial.println(data);
+}
+
+void mqttPublished(void* response) {
+  Serial.println("MQTT published");
+}
+//end esp-link Initialize block
+
+//setup Arduino
 void setup()
 {
+  //tft setup
   tft.begin(0x9341); // SDFP5408
   tft.cp437(true);
   tft.setRotation(-1); // Need for the Mega, please changed for your choice or rotation initial
 
   pinMode(A5, OUTPUT);
 
-  Serial.begin(9600);
+  //Serial.begin(9600);
   SPI.begin(); // Init SPI bus
   rfid.PCD_Init(); // Init MFRC522
 
   // Initial screen
   tft.fillScreen(WHITE);
   tft.setCursor (35, 85);
-  tft.setTextSize (5);
+  tft.setTextSize (3);
   tft.setTextColor(BLUE);
   tft.println(utf8rus("Дверь-карта"));
   delay (10);
   tft.fillScreen(WHITE);
 
+  //esp MQTT setup
+  Serial.begin(115200);
+  Serial.println("EL-Client starting!");
+
+  // Sync-up with esp-link, this is required at the start of any sketch and initializes the
+  // callbacks to the wifi status change callback. The callback gets called with the initial
+  // status right after Sync() below completes.
+  esp.wifiCb.attach(wifiCb); // wifi status change callback, optional (delete if not desired)
+  bool ok;
+  do {
+    ok = esp.Sync();      // sync up with esp-link, blocks for up to 2 seconds
+    if (!ok) Serial.println("EL-Client sync failed!");
+  } while(!ok);
+  Serial.println("EL-Client synced!");
+
+  // Set-up callbacks for events and initialize with es-link.
+ mqtt.connectedCb.attach(mqttConnected);
+ mqtt.disconnectedCb.attach(mqttDisconnected);
+ mqtt.publishedCb.attach(mqttPublished);
+ mqtt.dataCb.attach(mqttData);
+ mqtt.setup();
+
+ Serial.println("EL-MQTT ready");
 }
+
+//main program loop
+//static int count;
+//static uint32_t last;
 
 void loop()
 {
+  esp.Process();
+
   tft.setCursor (45, 200);
   tft.setTextSize (3);
   tft.setTextColor(RED);
@@ -129,12 +233,17 @@ void loop()
    {
      nuidPICC = rfid.uid.uidByte[0];
 
-     IDRead(rfid.uid.uidByte, rfid.uid.size);
+     IDRead(rfid.uid.uidByte, rfid.uid.size); //byte ID to DEC
+     //print ID on screan
      tft.fillScreen(WHITE);
      tft.setCursor (45, 100);
      tft.setTextSize (3);
      tft.setTextColor(GREEN);
      tft.println(ID);
+
+     char buf[ID.length()+1];
+     ID.toCharArray(buf, ID.length());
+     mqtt.publish(cardID_mqtt, buf);
    }
 
  // Halt PICC
