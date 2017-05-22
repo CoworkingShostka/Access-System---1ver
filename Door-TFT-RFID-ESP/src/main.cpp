@@ -37,6 +37,9 @@ String ID = ""; // read ID from RFID
 //const char * buf;
 // Init array that will store new NUID
 byte nuidPICC = 0;
+
+static uint32_t last; //variable for asynchronous deleay
+bool flag_screen = true;  //flag for screan change
 /*
 TFT Initialize block
 */
@@ -115,11 +118,13 @@ void wifiCb(void* response) {
 
 bool connected;
 const char* cardID_mqtt = "AS/door1/cardID";
+const char* server_resp = "AS/door1/server_response";
 
 // Callback when MQTT is connected
 void mqttConnected(void* response) {
   Serial.println("MQTT connected!");
   mqtt.subscribe(cardID_mqtt);
+  mqtt.subscribe(server_resp);
   //mqtt.subscribe("/hello/world/#");
   //mqtt.subscribe("/esp-link/2", 1);
   //mqtt.publish("/esp-link/0", "test1");
@@ -143,6 +148,29 @@ void mqttData(void* response) {
   Serial.print("data=");
   String data = res->popString();
   Serial.println(data);
+
+  if (topic == server_resp) {
+    if (data == "yes") {
+      tft.fillScreen(WHITE);
+      tft.setCursor (45, 100);
+      tft.setTextSize (3);
+      tft.setTextColor(GREEN);
+      tft.println(utf8rus("Відчинено"));
+      nuidPICC = 0;
+    }
+    else if (data == "no") {
+      tft.fillScreen(WHITE);
+      tft.setCursor (45, 100);
+      tft.setTextSize (3);
+      tft.setTextColor(RED);
+      tft.println(utf8rus("Відмова"));
+      nuidPICC = 0;
+    }
+
+    last = millis();
+    flag_screen = true;
+    return;
+  }
 }
 
 void mqttPublished(void* response) {
@@ -170,8 +198,8 @@ void setup()
   tft.setTextSize (3);
   tft.setTextColor(BLUE);
   tft.println(utf8rus("Дверь-карта"));
-  delay (10);
-  tft.fillScreen(WHITE);
+  //delay (10);
+  //tft.fillScreen(WHITE);
 
   //esp MQTT setup
   Serial.begin(115200);
@@ -181,7 +209,7 @@ void setup()
   // callbacks to the wifi status change callback. The callback gets called with the initial
   // status right after Sync() below completes.
   esp.wifiCb.attach(wifiCb); // wifi status change callback, optional (delete if not desired)
-  bool ok;
+  //bool ok = false;
   do {
     ok = esp.Sync();      // sync up with esp-link, blocks for up to 2 seconds
     if (!ok) Serial.println("EL-Client sync failed!");
@@ -196,20 +224,26 @@ void setup()
  mqtt.setup();
 
  Serial.println("EL-MQTT ready");
+
+ last = millis(); //start delay
 }
 
 //main program loop
 //static int count;
-//static uint32_t last;
 
 void loop()
 {
   esp.Process();
 
-  tft.setCursor (45, 200);
-  tft.setTextSize (3);
-  tft.setTextColor(RED);
-  tft.println(utf8rus("Вставте карту"));
+  if (flag_screen && (millis()-last) > 2000) {
+    tft.fillScreen(WHITE);
+    tft.setCursor (20, 100);
+    tft.setTextSize (3);
+    tft.setTextColor(RED);
+    tft.println(utf8rus("Піднесіть карту"));
+
+    flag_screen = false;
+  }
 
   // Look for new cards
   if ( ! rfid.PICC_IsNewCardPresent())
@@ -226,6 +260,13 @@ void loop()
     piccType != MFRC522::PICC_TYPE_MIFARE_1K &&
     piccType != MFRC522::PICC_TYPE_MIFARE_4K) {
     //Serial.println(F("Your tag is not of type MIFARE Classic."));
+    tft.fillScreen(WHITE);
+    tft.setCursor (45, 100);
+    tft.setTextSize (3);
+    tft.setTextColor(RED);
+    tft.println(utf8rus("Your tag is not of type MIFARE Classic."));
+    last = millis();
+    flag_screen = true;
     return;
   }
 
@@ -239,11 +280,19 @@ void loop()
      tft.setCursor (45, 100);
      tft.setTextSize (3);
      tft.setTextColor(GREEN);
+     tft.println(utf8rus("Зчитано"));
+
+     tft.setCursor (45, 200);
+     tft.setTextSize (3);
+     tft.setTextColor(GREEN);
      tft.println(ID);
 
      char buf[ID.length()+1];
-     ID.toCharArray(buf, ID.length());
+     ID.toCharArray(buf, ID.length()+1);
      mqtt.publish(cardID_mqtt, buf);
+
+     last = millis();
+     flag_screen = true;
    }
 
  // Halt PICC
