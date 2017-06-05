@@ -107,12 +107,12 @@ void wifiCb(void* response) {
     uint8_t status;
     res->popArg(&status, 1);
 
-    if(status == STATION_GOT_IP) {
-      Serial.println("WIFI CONNECTED");
-    } else {
-      Serial.print("WIFI NOT READY: ");
-      Serial.println(status);
-    }
+    // if(status == STATION_GOT_IP) {
+    //   Serial.println("WIFI CONNECTED");
+    // } else {
+    //   Serial.print("WIFI NOT READY: ");
+    //   Serial.println(status);
+    // }
   }
 }
 
@@ -122,18 +122,16 @@ const char* server_resp = "AS/door1/server_response";
 
 // Callback when MQTT is connected
 void mqttConnected(void* response) {
-  Serial.println("MQTT connected!");
+  //Serial.println("MQTT connected!");
   mqtt.subscribe(cardID_mqtt);
   mqtt.subscribe(server_resp);
-  //mqtt.subscribe("/hello/world/#");
-  //mqtt.subscribe("/esp-link/2", 1);
-  //mqtt.publish("/esp-link/0", "test1");
+
   connected = true;
 }
 
 // Callback when MQTT is disconnected
 void mqttDisconnected(void* response) {
-  Serial.println("MQTT disconnected");
+  //Serial.println("MQTT disconnected");
   connected = false;
 }
 
@@ -141,13 +139,13 @@ void mqttDisconnected(void* response) {
 void mqttData(void* response) {
   ELClientResponse *res = (ELClientResponse *)response;
 
-  Serial.print("Received: topic=");
+  //Serial.print("Received: topic=");
   String topic = res->popString();
-  Serial.println(topic);
+  //Serial.println(topic);
 
-  Serial.print("data=");
+  //Serial.print("data=");
   String data = res->popString();
-  Serial.println(data);
+  //Serial.println(data);
 
   if (topic == server_resp) {
     if (data == "yes") {
@@ -174,47 +172,32 @@ void mqttData(void* response) {
 }
 
 void mqttPublished(void* response) {
-  Serial.println("MQTT published");
+  //Serial.println("MQTT published");
 }
 //end esp-link Initialize block
 
 //setup Arduino
 void setup()
 {
-  //tft setup
-  tft.begin(0x9341); // SDFP5408
-  tft.cp437(true);
-  tft.setRotation(-1); // Need for the Mega, please changed for your choice or rotation initial
-
-  pinMode(A5, OUTPUT);
-
-  //Serial.begin(9600);
-  SPI.begin(); // Init SPI bus
-  rfid.PCD_Init(); // Init MFRC522
-
-  // Initial screen
-  tft.fillScreen(WHITE);
-  tft.setCursor (35, 85);
-  tft.setTextSize (3);
-  tft.setTextColor(BLUE);
-  tft.println(utf8rus("Дверь-карта"));
-  //delay (10);
-  //tft.fillScreen(WHITE);
-
+  delay(15000);
   //esp MQTT setup
   Serial.begin(115200);
-  Serial.println("EL-Client starting!");
+  //Serial.println("EL-Client starting!");
 
+  //
+  // }
   // Sync-up with esp-link, this is required at the start of any sketch and initializes the
   // callbacks to the wifi status change callback. The callback gets called with the initial
   // status right after Sync() below completes.
   esp.wifiCb.attach(wifiCb); // wifi status change callback, optional (delete if not desired)
-  //bool ok = false;
+  bool ok;
   do {
     ok = esp.Sync();      // sync up with esp-link, blocks for up to 2 seconds
-    if (!ok) Serial.println("EL-Client sync failed!");
+    //if (!ok) Serial.println("EL-Client sync failed!");
   } while(!ok);
-  Serial.println("EL-Client synced!");
+  //Serial.println("EL-Client synced!");
+
+
 
   // Set-up callbacks for events and initialize with es-link.
  mqtt.connectedCb.attach(mqttConnected);
@@ -223,7 +206,25 @@ void setup()
  mqtt.dataCb.attach(mqttData);
  mqtt.setup();
 
- Serial.println("EL-MQTT ready");
+ //Serial.println("EL-MQTT ready");
+
+ //tft setup
+ //delay(2000);
+ tft.begin(0x9341); // SDFP5408
+ tft.cp437(true);
+ tft.setRotation(-1); // Need for the Mega, please changed for your choice or rotation initial
+
+ pinMode(A5, OUTPUT);
+
+ //Serial.begin(9600);
+ SPI.begin(); // Init SPI bus
+ rfid.PCD_Init(); // Init MFRC522
+
+ tft.fillScreen(WHITE);
+ tft.setCursor (35, 85);
+ tft.setTextSize (3);
+ tft.setTextColor(BLUE);
+ tft.println(utf8rus("Дверь-карта"));
 
  last = millis(); //start delay
 }
