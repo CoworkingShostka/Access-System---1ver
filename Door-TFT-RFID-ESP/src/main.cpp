@@ -117,21 +117,21 @@ void wifiCb(void* response) {
 }
 
 bool connected;
-const char* cardID_mqtt = "AS/door1/cardID";
+const char* cardID_mqtt = "AS/admin/cardID";
 const char* server_resp = "AS/door1/server_response";
 
 // Callback when MQTT is connected
 void mqttConnected(void* response) {
-  //Serial.println("MQTT connected!");
-  mqtt.subscribe(cardID_mqtt);
-  mqtt.subscribe(server_resp);
+  Serial.println("MQTT connected!");
+  //mqtt.subscribe(cardID_mqtt);
+  //mqtt.subscribe(server_resp);
 
   connected = true;
 }
 
 // Callback when MQTT is disconnected
 void mqttDisconnected(void* response) {
-  //Serial.println("MQTT disconnected");
+  Serial.println("MQTT disconnected");
   connected = false;
 }
 
@@ -176,13 +176,15 @@ void mqttPublished(void* response) {
 }
 //end esp-link Initialize block
 
+void(* resetFunc) (void) = 0;//объявляем функцию reset с адресом 0
+
 //setup Arduino
 void setup()
 {
   delay(15000);
   //esp MQTT setup
   Serial.begin(115200);
-  //Serial.println("EL-Client starting!");
+  Serial.println("EL-Client starting!");
 
   //
   // }
@@ -193,9 +195,9 @@ void setup()
   bool ok;
   do {
     ok = esp.Sync();      // sync up with esp-link, blocks for up to 2 seconds
-    //if (!ok) Serial.println("EL-Client sync failed!");
+    if (!ok) Serial.println("EL-Client sync failed!");
   } while(!ok);
-  //Serial.println("EL-Client synced!");
+  Serial.println("EL-Client synced!");
 
 
 
@@ -206,7 +208,14 @@ void setup()
  mqtt.dataCb.attach(mqttData);
  mqtt.setup();
 
- //Serial.println("EL-MQTT ready");
+ esp.Process();
+   delay(1000);
+
+   if (connected != true)
+     {
+       resetFunc(); //вызываем reset
+     }
+ Serial.println("EL-MQTT ready");
 
  //tft setup
  //delay(2000);
@@ -227,6 +236,7 @@ void setup()
  tft.println(utf8rus("Дверь-карта"));
 
  last = millis(); //start delay
+
 }
 
 //main program loop
