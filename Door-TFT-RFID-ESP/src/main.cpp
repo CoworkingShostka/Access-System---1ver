@@ -14,6 +14,7 @@ Send Card ID via MQTT
 ///////////////
 
 #include "Arduino.h"
+#include "avr/wdt.h"
 
 #include <SPFD5408_Adafruit_GFX.h>    // Core graphics library
 #include <SPFD5408_Adafruit_TFTLCD.h> // Hardware-specific library
@@ -139,13 +140,13 @@ void mqttDisconnected(void* response) {
 void mqttData(void* response) {
   ELClientResponse *res = (ELClientResponse *)response;
 
-  //Serial.print("Received: topic=");
+  Serial.print("Received: topic=");
   String topic = res->popString();
-  //Serial.println(topic);
+  Serial.println(topic);
 
-  //Serial.print("data=");
+  Serial.print("data=");
   String data = res->popString();
-  //Serial.println(data);
+  Serial.println(data);
 
   if (topic == server_resp) {
     if (data == "yes") {
@@ -176,12 +177,12 @@ void mqttPublished(void* response) {
 }
 //end esp-link Initialize block
 
-void(* resetFunc) (void) = 0;//объявляем функцию reset с адресом 0
+//void(* resetFunc) (void) = 0;//объявляем функцию reset с адресом 0
 
 //setup Arduino
 void setup()
 {
-  delay(15000);
+  //delay(15000);
   //esp MQTT setup
   Serial.begin(115200);
   Serial.println("EL-Client starting!");
@@ -207,15 +208,26 @@ void setup()
  mqtt.publishedCb.attach(mqttPublished);
  mqtt.dataCb.attach(mqttData);
  mqtt.setup();
+ if (connected)
+ {
+   Serial.println("EL-MQTT ready");
+ }
+ //Serial.println("EL-MQTT ready");
+ //esp.Process();
+ //   delay(1000);
+ //
+ //   if (connected != true)
+ //     {
+ //       resetFunc(); //вызываем reset
+ //     }
 
- esp.Process();
-   delay(1000);
-
-   if (connected != true)
-     {
-       resetFunc(); //вызываем reset
-     }
- Serial.println("EL-MQTT ready");
+ // if (!connected)
+ // {
+ //   wdt_enable(WDTO_2S);
+ //   while (!connected) ;
+ //   wdt_disable();
+ // }
+// Serial.println("EL-MQTT ready");
 
  //tft setup
  //delay(2000);
@@ -245,6 +257,14 @@ void setup()
 void loop()
 {
   esp.Process();
+
+  if (!connected)
+  {
+    wdt_enable(WDTO_2S);
+    while (!connected) ;
+    wdt_disable();
+  }
+
 
   if (flag_screen && (millis()-last) > 2000) {
     tft.fillScreen(WHITE);
