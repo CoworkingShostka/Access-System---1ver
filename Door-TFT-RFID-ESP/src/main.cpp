@@ -272,7 +272,7 @@ void loop()
     tft.setTextSize (3);
     tft.setTextColor(RED);
     tft.println(utf8rus("Піднесіть карту"));
-
+    nuidPICC = 0;
     flag_screen = false;
   }
 
